@@ -1,0 +1,12 @@
+#!/bin/bash
+# PDF to Text Converter - Wrapper Script
+# Automatically activates virtual environment and runs converter
+# Built at 3:00 AM by Eliza for Vishen 💜
+
+# Get the directory where this script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+
+# Activate virtual environment and run converter
+cd "$SCRIPT_DIR"
+source venv/bin/activate
+python pdf_converter.py "$@"

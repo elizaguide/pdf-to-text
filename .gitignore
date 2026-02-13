@@ -1,0 +1,23 @@
+# Virtual Environment
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Output files
+*_converted.txt
+
+# Test files
+*.pdf
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
