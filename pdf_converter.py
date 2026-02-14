@@ -1,203 +1,219 @@
 #!/usr/bin/env python3
 """
 PDF to Text Converter
-A reliable tool for converting PDF documents to clean, readable text.
-Built for Vishen's content analysis needs.
-
-Created: February 13, 2026 at 3:00 AM GMT by Eliza
+A robust PDF parser that handles encoding artifacts and multiple PDF formats.
+Created by Eliza for Vishen Lakhiani - February 14th, 2026
 """
 
-import argparse
-import os
 import sys
-from pathlib import Path
+import argparse
 import re
-import chardet
+from pathlib import Path
+from typing import Optional, List
 
 try:
     import PyPDF2
-    from PyPDF2 import PdfReader
-except ImportError:
-    print("❌ PyPDF2 not found. Install with: pip install PyPDF2")
-    sys.exit(1)
-
-try:
     import pdfplumber
-except ImportError:
-    print("❌ pdfplumber not found. Install with: pip install pdfplumber")
+except ImportError as e:
+    print(f"Error: Missing required libraries. Please run: pip install -r requirements.txt")
+    print(f"Details: {e}")
     sys.exit(1)
 
 
 class PDFConverter:
-    def __init__(self):
-        self.success_count = 0
-        self.error_count = 0
-
-    def clean_text(self, text):
-        """Clean extracted text to remove artifacts and improve readability."""
-        if not text:
-            return ""
+    """Robust PDF to text converter with multiple parsing strategies."""
+    
+    def __init__(self, encoding_cleanup: bool = True, verbose: bool = False):
+        self.encoding_cleanup = encoding_cleanup
+        self.verbose = verbose
+    
+    def log(self, message: str):
+        """Print message if verbose mode is enabled."""
+        if self.verbose:
+            print(f"[PDF Converter] {message}")
+    
+    def clean_encoding_artifacts(self, text: str) -> str:
+        """Remove common PDF encoding artifacts and normalize text."""
+        if not self.encoding_cleanup:
+            return text
         
-        # Remove excessive whitespace
-        text = re.sub(r'\s+', ' ', text)
+        # Remove null bytes and other control characters
+        text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]', '', text)
         
         # Fix common encoding issues
-        text = text.replace('\x00', '')  # Remove null bytes
-        text = text.replace('\ufeff', '')  # Remove BOM
-        text = text.replace('\u2019', "'")  # Smart apostrophes
-        text = text.replace('\u2018', "'")  # Smart apostrophes
-        text = text.replace('\u201c', '"')  # Smart quotes
-        text = text.replace('\u201d', '"')  # Smart quotes
-        text = text.replace('\u2013', '-')  # En dash
-        text = text.replace('\u2014', '--')  # Em dash
-        text = text.replace('\u2026', '...')  # Ellipsis
+        replacements = {
+            # Common PDF artifacts
+            'ï¿½': '',  # Replacement character
+            'â€™': "'",  # Smart apostrophe
+            'â€œ': '"',  # Smart quote left
+            'â€': '"',   # Smart quote right  
+            'â€"': '—',  # Em dash
+            'â€"': '–',  # En dash
+            'â€¦': '...',  # Ellipsis
+            'Â': '',     # Non-breaking space artifact
+            'Ã©': 'é',   # e with acute
+            'Ã¡': 'á',   # a with acute
+            'Ã­': 'í',   # i with acute
+            'Ã³': 'ó',   # o with acute
+            'Ãº': 'ú',   # u with acute
+            'Ã±': 'ñ',   # n with tilde
+        }
         
-        # Remove page numbers and headers/footers (common patterns)
-        lines = text.split('\n')
-        cleaned_lines = []
+        for artifact, replacement in replacements.items():
+            text = text.replace(artifact, replacement)
         
-        for line in lines:
-            line = line.strip()
-            # Skip likely page numbers
-            if re.match(r'^\d+$', line) and len(line) <= 3:
-                continue
-            # Skip very short lines that are likely artifacts
-            if len(line) < 3:
-                continue
-            cleaned_lines.append(line)
-        
-        # Rejoin with proper spacing
-        text = '\n'.join(cleaned_lines)
-        
-        # Final cleanup
-        text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)  # Remove excessive newlines
+        # Normalize whitespace
+        text = re.sub(r'\n\s*\n\s*\n', '\n\n', text)  # Max double newlines
+        text = re.sub(r'[ \t]+', ' ', text)  # Normalize spaces
         text = text.strip()
         
         return text
-
-    def extract_with_pypdf2(self, pdf_path):
-        """Extract text using PyPDF2 (primary method)."""
+    
+    def extract_with_pypdf2(self, pdf_path: Path) -> Optional[str]:
+        """Extract text using PyPDF2 library."""
         try:
+            self.log("Attempting extraction with PyPDF2...")
             with open(pdf_path, 'rb') as file:
-                reader = PdfReader(file)
+                reader = PyPDF2.PdfReader(file)
                 text = ""
-                
                 for page_num, page in enumerate(reader.pages):
                     try:
                         page_text = page.extract_text()
                         if page_text:
-                            text += f"\n--- Page {page_num + 1} ---\n"
                             text += page_text + "\n"
+                            self.log(f"Extracted page {page_num + 1}")
                     except Exception as e:
-                        print(f"⚠️ Warning: Could not extract page {page_num + 1}: {e}")
+                        self.log(f"Error on page {page_num + 1}: {e}")
                         continue
-                
-                return text
+                return text.strip()
         except Exception as e:
-            print(f"⚠️ PyPDF2 failed: {e}")
+            self.log(f"PyPDF2 extraction failed: {e}")
             return None
-
-    def extract_with_pdfplumber(self, pdf_path):
-        """Extract text using pdfplumber (fallback method)."""
+    
+    def extract_with_pdfplumber(self, pdf_path: Path) -> Optional[str]:
+        """Extract text using pdfplumber library."""
         try:
-            text = ""
+            self.log("Attempting extraction with pdfplumber...")
             with pdfplumber.open(pdf_path) as pdf:
+                text = ""
                 for page_num, page in enumerate(pdf.pages):
                     try:
                         page_text = page.extract_text()
                         if page_text:
-                            text += f"\n--- Page {page_num + 1} ---\n"
                             text += page_text + "\n"
+                            self.log(f"Extracted page {page_num + 1}")
                     except Exception as e:
-                        print(f"⚠️ Warning: Could not extract page {page_num + 1}: {e}")
+                        self.log(f"Error on page {page_num + 1}: {e}")
                         continue
-            return text
+                return text.strip()
         except Exception as e:
-            print(f"⚠️ pdfplumber failed: {e}")
+            self.log(f"pdfplumber extraction failed: {e}")
             return None
-
-    def convert_pdf(self, pdf_path, output_path=None):
-        """Convert PDF to text using multiple extraction methods."""
-        if not os.path.exists(pdf_path):
-            print(f"❌ Error: File not found: {pdf_path}")
-            self.error_count += 1
-            return False
-
-        print(f"🔧 Converting: {pdf_path}")
+    
+    def convert_pdf(self, pdf_path: Path) -> Optional[str]:
+        """
+        Convert PDF to text using best available method.
         
-        # Try PyPDF2 first
-        text = self.extract_with_pypdf2(pdf_path)
+        Args:
+            pdf_path: Path to PDF file
+            
+        Returns:
+            Extracted text or None if extraction fails
+        """
+        if not pdf_path.exists():
+            print(f"Error: File not found: {pdf_path}")
+            return None
         
-        # Fall back to pdfplumber if PyPDF2 fails
+        if not pdf_path.suffix.lower() == '.pdf':
+            print(f"Error: File is not a PDF: {pdf_path}")
+            return None
+        
+        self.log(f"Processing: {pdf_path}")
+        
+        # Try pdfplumber first (generally more reliable for complex layouts)
+        text = self.extract_with_pdfplumber(pdf_path)
+        
+        # Fallback to PyPDF2 if pdfplumber fails
         if not text or len(text.strip()) < 50:
-            print("🔄 Trying fallback method (pdfplumber)...")
-            text = self.extract_with_pdfplumber(pdf_path)
+            self.log("pdfplumber result insufficient, trying PyPDF2...")
+            text = self.extract_with_pypdf2(pdf_path)
         
-        if not text or len(text.strip()) < 10:
-            print(f"❌ Error: No text could be extracted from {pdf_path}")
-            self.error_count += 1
-            return False
-
-        # Clean the extracted text
-        cleaned_text = self.clean_text(text)
-        
-        # Determine output path
-        if not output_path:
-            base_name = Path(pdf_path).stem
-            output_path = f"{base_name}_converted.txt"
-
-        # Write the cleaned text
-        try:
-            with open(output_path, 'w', encoding='utf-8') as f:
-                f.write(f"# Converted from: {pdf_path}\n")
-                f.write(f"# Conversion time: {os.system('date')}\n\n")
-                f.write(cleaned_text)
-            
-            print(f"✅ Success: {output_path} ({len(cleaned_text):,} characters)")
-            self.success_count += 1
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error writing output file: {e}")
-            self.error_count += 1
-            return False
-
-    def batch_convert(self, pattern):
-        """Convert multiple PDFs matching a pattern."""
-        import glob
-        
-        pdf_files = glob.glob(pattern)
-        if not pdf_files:
-            print(f"❌ No PDF files found matching: {pattern}")
-            return
-        
-        print(f"🔧 Found {len(pdf_files)} PDF files to convert...")
-        
-        for pdf_file in pdf_files:
-            self.convert_pdf(pdf_file)
-        
-        print(f"\n📊 Batch conversion complete:")
-        print(f"   ✅ Success: {self.success_count}")
-        print(f"   ❌ Errors: {self.error_count}")
+        # Clean encoding artifacts if extraction succeeded
+        if text:
+            original_length = len(text)
+            text = self.clean_encoding_artifacts(text)
+            self.log(f"Text extracted: {original_length} -> {len(text)} characters after cleanup")
+            return text
+        else:
+            print(f"Error: Unable to extract text from {pdf_path}")
+            return None
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Convert PDF documents to clean, readable text")
-    parser.add_argument("input", help="Input PDF file or pattern for batch processing")
-    parser.add_argument("-o", "--output", help="Output text file (default: input_converted.txt)")
-    parser.add_argument("--batch", action="store_true", help="Process multiple files matching pattern")
+    """Command line interface for PDF conversion."""
+    parser = argparse.ArgumentParser(
+        description="Convert PDF files to clean text",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python3 pdf_converter.py document.pdf
+  python3 pdf_converter.py document.pdf -o output.txt
+  python3 pdf_converter.py *.pdf --batch
+  python3 pdf_converter.py document.pdf --no-cleanup --verbose
+        """
+    )
+    
+    parser.add_argument('input', nargs='+', help='PDF file(s) to convert')
+    parser.add_argument('-o', '--output', help='Output file (default: stdout or auto-generated)')
+    parser.add_argument('--no-cleanup', action='store_true', 
+                       help='Skip encoding artifact cleanup')
+    parser.add_argument('--batch', action='store_true',
+                       help='Process multiple files, auto-generate output names')
+    parser.add_argument('--verbose', action='store_true',
+                       help='Enable verbose output')
     
     args = parser.parse_args()
     
-    converter = PDFConverter()
+    # Initialize converter
+    converter = PDFConverter(
+        encoding_cleanup=not args.no_cleanup,
+        verbose=args.verbose
+    )
     
-    print("🔧 PDF to Text Converter")
-    print("Built with ❤️ by Eliza at 3:00 AM for Vishen 💜\n")
-    
-    if args.batch:
-        converter.batch_convert(args.input)
-    else:
-        converter.convert_pdf(args.input, args.output)
+    # Process files
+    for input_path_str in args.input:
+        input_path = Path(input_path_str)
+        
+        # Handle wildcards if shell didn't expand them
+        if '*' in input_path_str and not input_path.exists():
+            matching_files = list(input_path.parent.glob(input_path.name))
+            if not matching_files:
+                print(f"No files found matching: {input_path_str}")
+                continue
+        else:
+            matching_files = [input_path]
+        
+        for pdf_path in matching_files:
+            # Convert PDF
+            text = converter.convert_pdf(pdf_path)
+            if not text:
+                continue
+            
+            # Determine output
+            if args.batch or len(args.input) > 1:
+                # Auto-generate output filename
+                output_path = pdf_path.with_suffix('.txt')
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    f.write(text)
+                print(f"✅ Converted: {pdf_path} -> {output_path}")
+            elif args.output:
+                # Specific output file
+                with open(args.output, 'w', encoding='utf-8') as f:
+                    f.write(text)
+                print(f"✅ Converted: {pdf_path} -> {args.output}")
+            else:
+                # Output to stdout
+                print(text)
 
 
 if __name__ == "__main__":
