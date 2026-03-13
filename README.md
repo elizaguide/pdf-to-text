@@ -1,156 +1,130 @@
 # PDF to Text Converter
 
-Simple, reliable tool for extracting clean text from PDF files. Handles multiple PDF formats, removes encoding artifacts, and produces formatted text output.
+Simple, reliable tool for converting PDFs to clean, readable text. Perfect for document analysis, content extraction, and preparing PDFs for LLM processing.
 
 ## Features
 
-✅ **Clean Text Extraction** - Removes encoding artifacts, control characters, and formatting junk  
-✅ **Multi-Page Support** - Handles PDFs with any number of pages  
-✅ **Error Handling** - Graceful handling of corrupted or problematic PDFs  
-✅ **CLI Interface** - Easy command-line use with flexible output options  
-✅ **Verbose Mode** - Progress tracking for large PDF files  
+- ✅ **Dual-engine extraction** - Uses pdfplumber (preferred) with PyPDF2 fallback
+- ✅ **Clean output** - Removes encoding artifacts, extra whitespace, and control characters
+- ✅ **Error handling** - Graceful failures with helpful error messages
+- ✅ **Verbose mode** - See extraction progress and methods used
+- ✅ **Flexible output** - Write to file or stdout
+- ✅ **Cross-platform** - Works on macOS, Linux, Windows
 
 ## Installation
 
-```bash
-# Clone/download the tool
-cd ~/.openclaw/tools/pdf-to-text
+### 1. Install dependencies
 
-# Install dependencies
-pip install -r requirements.txt
+```bash
+pip install pdfplumber PyPDF2
+```
+
+### 2. Make the script executable
+
+```bash
+chmod +x pdf_converter.py
 ```
 
 ## Usage
 
-### Basic Usage
-
-**Print extracted text to console:**
-```bash
-python pdf_to_text.py document.pdf
-```
-
-**Save to specific output file:**
-```bash
-python pdf_to_text.py document.pdf -o output.txt
-```
-
-**Auto-generate output filename (converts .pdf → .txt):**
-```bash
-python pdf_to_text.py document.pdf --auto-save
-```
-
-### Advanced Options
-
-**Verbose mode with progress tracking:**
-```bash
-python pdf_to_text.py document.pdf -v
-python pdf_to_text.py document.pdf -v -o output.txt
-```
-
-### Examples
+### Basic usage (output to stdout)
 
 ```bash
-# Extract and display (good for quick previews)
-python pdf_to_text.py ~/Downloads/report.pdf
-
-# Extract large PDF with progress tracking
-python pdf_to_text.py ~/Documents/analysis.pdf -v --auto-save
-
-# Save to specific location
-python pdf_to_text.py research.pdf -o ~/Dropbox/research-text.txt
-
-# Chain with other tools
-python pdf_to_text.py document.pdf | grep "keyword"
+python pdf_converter.py document.pdf
 ```
 
-## Text Cleaning
+### Save to file
 
-The converter automatically:
-
-1. **Removes encoding artifacts** - Control characters, binary junk
-2. **Normalizes whitespace** - Removes excessive blank lines while preserving paragraph structure
-3. **Cleans formatting** - Strips extra spaces, fixes common OCR issues
-4. **Preserves readability** - Maintains logical structure and paragraph breaks
-
-## Output Format
-
-- UTF-8 text encoding
-- Paragraphs separated by blank lines
-- No trailing whitespace
-- Clean, readable formatting
-
-## Error Handling
-
-- ✅ Handles corrupted or malformed PDFs gracefully
-- ✅ Skips problematic pages and continues
-- ✅ Provides clear error messages
-- ✅ Non-zero exit codes for failures
-
-## API Usage (Python)
-
-```python
-from pdf_to_text import PDFToTextConverter
-
-# Create converter
-converter = PDFToTextConverter(verbose=True)
-
-# Extract text (returns string)
-text = converter.extract_text('document.pdf')
-
-# Convert and save to file
-output_path = converter.convert('document.pdf', 'output.txt')
-
-# Or just print the text
-print(converter.extract_text('document.pdf'))
+```bash
+python pdf_converter.py input.pdf -o output.txt
 ```
 
-## Command-Line Reference
+### Verbose mode (see processing details)
 
+```bash
+python pdf_converter.py report.pdf -v
+python pdf_converter.py report.pdf -o output.txt -v
 ```
-usage: pdf_to_text.py [-h] [-o OUTPUT] [-v] [--auto-save] pdf_file
 
-positional arguments:
-  pdf_file              Path to PDF file
+## Examples
 
-optional arguments:
-  -h, --help            Show this help message
-  -o, --output OUTPUT   Output text file path
-  -v, --verbose         Verbose output with progress
-  --auto-save           Auto-generate output filename (pdf → txt)
+### Extract PDF and view in terminal
+```bash
+python pdf_converter.py /path/to/file.pdf | less
 ```
+
+### Convert batch of PDFs
+```bash
+for pdf in *.pdf; do
+  python pdf_converter.py "$pdf" -o "${pdf%.pdf}.txt"
+done
+```
+
+### Use with analysis tools
+```bash
+# Extract text and pipe to other commands
+python pdf_converter.py document.pdf | grep "keyword" | head -20
+
+# Get word count of extracted text
+python pdf_converter.py document.pdf | wc -w
+```
+
+## How It Works
+
+1. **Detection** - Checks for available PDF libraries
+2. **Extraction** - Uses pdfplumber (better) or PyPDF2 (fallback)
+3. **Cleaning** - Removes encoding artifacts and normalizes whitespace
+4. **Output** - Writes to file or stdout
+
+### Text Cleaning Steps
+
+- Removes form feeds and control characters
+- Strips encoding artifacts (Â, â, etc.)
+- Normalizes whitespace while preserving structure
+- Removes multiple consecutive blank lines
+- Preserves indentation and formatting intent
+
+## Supported PDF Types
+
+- ✅ Text-based PDFs (extraction-friendly)
+- ✅ Scanned PDFs with OCR text layer
+- ⚠️ Image-only PDFs (no text layer) - Cannot extract without OCR
 
 ## Troubleshooting
 
-**PyPDF2 not found:**
+### "No PDF library available"
 ```bash
-pip install PyPDF2
+pip install pdfplumber PyPDF2
 ```
 
-**Permission denied on output:**
-```bash
-# Check file permissions or try different location
-chmod u+w ~/path/to/output/
-```
+### Garbled output
+- Try with `-v` flag to see which extraction method was used
+- Some PDFs may have encoding issues; check the source PDF
+- For scanned PDFs, you may need OCR (use `pytesseract` + tesseract)
 
-**PDF won't extract:**
-- Try verbose mode to see which pages fail: `python pdf_to_text.py -v`
-- Some encrypted PDFs may not extract; consider using `pdfrw` or other tools
-- Scanned PDFs (image-based) won't work with text extraction; use OCR tool instead
+### Incomplete text extraction
+- Some PDFs use special encoding that's hard to extract
+- Try both methods: `pdfplumber` typically works better
+- For complex layouts, consider PDFMiner or other specialized tools
 
-## Performance
+## Technical Details
 
-- **Small PDFs (< 10 pages):** Instant
-- **Medium PDFs (10-100 pages):** < 1 second
-- **Large PDFs (> 100 pages):** 1-5 seconds depending on content density
+### Extraction Methods
 
-Use `--verbose` mode to monitor progress on large files.
+**pdfplumber** (preferred)
+- Better text layout preservation
+- Handles complex PDFs well
+- Accurate page-by-page extraction
+
+**PyPDF2** (fallback)
+- Simpler, more lightweight
+- Used if pdfplumber is unavailable
+- Good for straightforward text PDFs
 
 ## License
 
-Public tool for Eliza's document analysis pipeline.
+MIT - Feel free to use, modify, and distribute.
 
----
+## Author
 
-**Built:** March 1, 2026 | **For:** PDF analysis and text extraction  
-**Tested with:** PyPDF2 4.0+  
-**Python version:** 3.8+
+Built with ❤️ for Vishen | March 2026
